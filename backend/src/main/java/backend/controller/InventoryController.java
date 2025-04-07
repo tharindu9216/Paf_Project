@@ -5,7 +5,7 @@ import backend.repository.InventoryRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.*;
+import org.springframework.web.bind.annotation.*; // ✅ fixed typo here
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
@@ -22,9 +22,7 @@ public class InventoryController {
      @Autowired
      private InventoryRepository inventoryRepository;
 
-     /**
-      * Save the recipe details to the database.
-      */
+     // POST method to add a new Inventory
      @PostMapping("/inventory")
      public ResponseEntity<?> newInventoryModel(@RequestBody InventoryModel newInventoryModel) {
           try {
@@ -40,9 +38,13 @@ public class InventoryController {
           }
      }
 
-     /**
-      * Handle recipe image upload.
-      */
+     // ✅ NEW GET ENDPOINT to fetch all inventory items
+     @GetMapping("/inventory")
+     public ResponseEntity<?> getAllInventory() {
+          return new ResponseEntity<>(inventoryRepository.findAll(), HttpStatus.OK);
+     }
+
+     // POST method for uploading recipe image
      @PostMapping("/inventory/recipeImage")
      public ResponseEntity<String> uploadRecipeImage(@RequestParam("file") MultipartFile file) {
           try {
@@ -50,15 +52,14 @@ public class InventoryController {
                     return new ResponseEntity<>("No file selected", HttpStatus.BAD_REQUEST);
                }
 
-               // Create uploads directory if it doesn't exist
-               String uploadDir = "uploads/";
+               // ✅ Absolute path
+               String uploadDir = "C:/Users/thari/Desktop/uploads/";
                Path uploadPath = Paths.get(uploadDir);
 
                if (!Files.exists(uploadPath)) {
                     Files.createDirectories(uploadPath);
                }
 
-               // Generate unique filename
                String originalFilename = file.getOriginalFilename();
                if (originalFilename == null || originalFilename.isEmpty()) {
                     return new ResponseEntity<>("Invalid file name", HttpStatus.BAD_REQUEST);
@@ -71,8 +72,6 @@ public class InventoryController {
                }
 
                String uniqueFilename = UUID.randomUUID().toString() + fileExtension;
-
-               // Save file
                Path filePath = uploadPath.resolve(uniqueFilename);
                file.transferTo(filePath.toFile());
 

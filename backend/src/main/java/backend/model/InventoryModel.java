@@ -6,20 +6,32 @@ import jakarta.persistence.Id;
 
 @Entity
 public class InventoryModel {
-     @Id
+
+    @Id
     @GeneratedValue
     private Long id;
-     private String recipeId;
-     private int recipeImage;
-     private String recipeName;
-     private String recipeCategory;
-     private String recipeQty;
-     private String recipeDetails;
-     private String recipePrice;
 
-     public InventoryModel() {
+    private String recipeId;
+    private String recipeImage; // changed from int to String for filename
+    private String recipeName;
+    private String recipeCategory;
+    private String recipeQty;
+    private String recipeDetails;
+    private String recipePrice;
 
-     }
+    public InventoryModel() {
+    }
+
+    public InventoryModel(Long id, String recipeId, String recipeImage, String recipeName, String recipeCategory, String recipeQty, String recipeDetails, String recipePrice) {
+        this.id = id;
+        this.recipeId = recipeId;
+        this.recipeImage = recipeImage;
+        this.recipeName = recipeName;
+        this.recipeCategory = recipeCategory;
+        this.recipeQty = recipeQty;
+        this.recipeDetails = recipeDetails;
+        this.recipePrice = recipePrice;
+    }
 
     public Long getId() {
         return id;
@@ -37,11 +49,11 @@ public class InventoryModel {
         this.recipeId = recipeId;
     }
 
-    public int getRecipeImage() {
+    public String getRecipeImage() {
         return recipeImage;
     }
 
-    public void setRecipeImage(int recipeImage) {
+    public void setRecipeImage(String recipeImage) {
         this.recipeImage = recipeImage;
     }
 
@@ -82,17 +94,6 @@ public class InventoryModel {
     }
 
     public void setRecipePrice(String recipePrice) {
-        this.recipePrice = recipePrice;
-    }
-
-    public InventoryModel(Long id, String recipeId, int recipeImage, String recipeName, String recipeCategory, String recipeQty, String recipeDetails, String recipePrice) {
-        this.id = id;
-        this.recipeId = recipeId;
-        this.recipeImage = recipeImage;
-        this.recipeName = recipeName;
-        this.recipeCategory = recipeCategory;
-        this.recipeQty = recipeQty;
-        this.recipeDetails = recipeDetails;
         this.recipePrice = recipePrice;
     }
 }
