@@ -2,13 +2,13 @@ package backend.controller;
 
 import backend.model.InventoryModel;
 import backend.repository.InventoryRepository;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.core.io.FileSystemResource;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
-import org.springframework.web.server.ResponseStatusException;
 
 import java.io.File;
 import java.io.IOException;
@@ -18,17 +18,15 @@ import java.nio.file.Paths;
 import java.util.UUID;
 
 @RestController
-@CrossOrigin(origins = "http://localhost:5173") // Enable CORS for React frontend
+@CrossOrigin(origins = "http://localhost:5173")
 @RequestMapping("/api")
 public class InventoryController {
 
      @Autowired
      private InventoryRepository inventoryRepository;
 
-     // Define dynamic upload directory (can be changed via application.properties)
      private final String UPLOAD_DIR = System.getProperty("user.dir") + "/uploads/";
 
-     // POST method to add a new Inventory
      @PostMapping("/inventory")
      public ResponseEntity<?> newInventoryModel(@RequestBody InventoryModel newInventoryModel) {
           try {
@@ -44,13 +42,11 @@ public class InventoryController {
           }
      }
 
-     // GET endpoint to fetch all inventory items
      @GetMapping("/inventory")
      public ResponseEntity<?> getAllInventory() {
           return new ResponseEntity<>(inventoryRepository.findAll(), HttpStatus.OK);
      }
 
-     // POST method for uploading recipe image
      @PostMapping("/inventory/recipeImage")
      public ResponseEntity<String> uploadRecipeImage(@RequestParam("file") MultipartFile file) {
           try {
@@ -58,25 +54,23 @@ public class InventoryController {
                     return new ResponseEntity<>("No file selected", HttpStatus.BAD_REQUEST);
                }
 
-               // Create upload directory if it doesn't exist
                Path uploadPath = Paths.get(UPLOAD_DIR);
                if (!Files.exists(uploadPath)) {
                     Files.createDirectories(uploadPath);
                }
 
-               // Get the original file name and validate extension
                String originalFilename = file.getOriginalFilename();
                if (originalFilename == null || originalFilename.isEmpty()) {
                     return new ResponseEntity<>("Invalid file name", HttpStatus.BAD_REQUEST);
                }
 
-               // Check if file is an image (optional)
                String fileExtension = originalFilename.substring(originalFilename.lastIndexOf("."));
-               if (!fileExtension.equalsIgnoreCase(".jpg") && !fileExtension.equalsIgnoreCase(".png") && !fileExtension.equalsIgnoreCase(".jpeg")) {
+               if (!fileExtension.equalsIgnoreCase(".jpg") &&
+                       !fileExtension.equalsIgnoreCase(".png") &&
+                       !fileExtension.equalsIgnoreCase(".jpeg")) {
                     return new ResponseEntity<>("Only image files (jpg, jpeg, png) are allowed", HttpStatus.BAD_REQUEST);
                }
 
-               // Generate a unique file name to avoid collision
                String uniqueFilename = UUID.randomUUID().toString() + fileExtension;
                Path filePath = uploadPath.resolve(uniqueFilename);
                file.transferTo(filePath.toFile());
@@ -91,14 +85,13 @@ public class InventoryController {
           }
      }
 
-     // GET endpoint to fetch an inventory item by ID
      @GetMapping("/inventory/{id}")
-     public InventoryModel getItemId(@PathVariable Long id) {
-          return inventoryRepository.findById(id).orElseThrow(() ->
-                  new ResponseStatusException(HttpStatus.NOT_FOUND, "Item not found with id: " + id));
+     public ResponseEntity<InventoryModel> getItemById(@PathVariable Long id) {
+          return inventoryRepository.findById(id)
+                  .map(ResponseEntity::ok)
+                  .orElseGet(() -> ResponseEntity.notFound().build());
      }
 
-     // Serve uploaded image
      @GetMapping("/uploads/{filename}")
      public ResponseEntity<FileSystemResource> getImage(@PathVariable String filename) {
           File file = new File(UPLOAD_DIR + filename);
@@ -106,5 +99,89 @@ public class InventoryController {
                return ResponseEntity.notFound().build();
           }
           return ResponseEntity.ok(new FileSystemResource(file));
+     }
+
+     @PutMapping("/inventory/{id}")
+     public ResponseEntity<?> updateItem(
+             @RequestPart(value = "recipeDetails") String recipeDetails,
+             @RequestPart(value = "file", required = false) MultipartFile file,
+             @PathVariable Long id
+     ) {
+          try {
+               if (!inventoryRepository.existsById(id)) {
+                    return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                            .body("Item not found with id: " + id);
+               }
+
+               ObjectMapper mapper = new ObjectMapper();
+               InventoryModel newInventoryModel = mapper.readValue(recipeDetails, InventoryModel.class);
+
+               InventoryModel existingInventory = inventoryRepository.findById(id).get();
+               existingInventory.setRecipeId(newInventoryModel.getRecipeId());
+               existingInventory.setRecipeName(newInventoryModel.getRecipeName());
+               existingInventory.setRecipeCategory(newInventoryModel.getRecipeCategory());
+               existingInventory.setRecipeQty(newInventoryModel.getRecipeQty());
+               existingInventory.setRecipeDetails(newInventoryModel.getRecipeDetails());
+               existingInventory.setRecipePrice(newInventoryModel.getRecipePrice());
+
+               if (file != null && !file.isEmpty()) {
+                    String folder = UPLOAD_DIR;
+                    String fileExtension = file.getOriginalFilename().substring(
+                            file.getOriginalFilename().lastIndexOf("."));
+                    String recipeImage = UUID.randomUUID().toString() + fileExtension;
+
+                    try {
+                         file.transferTo(Paths.get(folder + recipeImage));
+                         existingInventory.setRecipeImage(recipeImage);
+                    } catch (IOException e) {
+                         return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                                 .body("Error saving recipe image: " + e.getMessage());
+                    }
+               }
+
+               InventoryModel updatedInventory = inventoryRepository.save(existingInventory);
+               return ResponseEntity.ok(updatedInventory);
+          } catch (Exception e) {
+               e.printStackTrace();
+               return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                       .body("Error updating item: " + e.getMessage());
+          }
+     }
+
+     // DELETE method to delete an inventory item
+     @DeleteMapping("/inventory/{id}")
+     public ResponseEntity<?> deleteItem(@PathVariable Long id) {
+          try {
+               // Check if the item exists
+               if (!inventoryRepository.existsById(id)) {
+                    return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                            .body("Item not found with id: " + id);
+               }
+
+               // Retrieve the item to get the associated image
+               InventoryModel itemToDelete = inventoryRepository.findById(id).get();
+
+               // If there is an associated image, delete it from the file system
+               if (itemToDelete.getRecipeImage() != null) {
+                    String imagePath = UPLOAD_DIR + itemToDelete.getRecipeImage();
+                    File imageFile = new File(imagePath);
+                    if (imageFile.exists()) {
+                         boolean isDeleted = imageFile.delete();
+                         if (!isDeleted) {
+                              return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                                      .body("Failed to delete image file.");
+                         }
+                    }
+               }
+
+               // Delete the item from the database
+               inventoryRepository.deleteById(id);
+
+               return ResponseEntity.status(HttpStatus.NO_CONTENT).body("Item deleted successfully.");
+          } catch (Exception e) {
+               e.printStackTrace();
+               return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                       .body("Error deleting item: " + e.getMessage());
+          }
      }
 }
