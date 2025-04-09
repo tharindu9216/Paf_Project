@@ -1,7 +1,11 @@
 import React, { useEffect, useState } from 'react';
 import axios from 'axios';
 import { useNavigate } from 'react-router-dom';
-import { FaHeart, FaRegHeart, FaComment, FaShare, FaStar, FaRegStar, FaWhatsapp, FaFacebook, FaTwitter, FaLink } from 'react-icons/fa';
+import { 
+  FaHeart, FaRegHeart, FaComment, FaShare, FaStar, FaRegStar, 
+  FaWhatsapp, FaFacebook, FaTwitter, FaLink, FaReply, FaEdit, 
+  FaTrash, FaThumbsUp, FaRegThumbsUp, FaLaughSquint 
+} from 'react-icons/fa';
 import './RecipeDisplay.css';
 
 function Welcome() {
@@ -19,19 +23,20 @@ function RecipeDisplay() {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('All');
   const [likedRecipes, setLikedRecipes] = useState(() => {
-    // Load liked recipes from localStorage
     const saved = localStorage.getItem('likedRecipes');
     return saved ? JSON.parse(saved) : {};
   });
   const [showCommentBox, setShowCommentBox] = useState(null);
   const [comments, setComments] = useState(() => {
-    // Load comments from localStorage
     const saved = localStorage.getItem('recipeComments');
     return saved ? JSON.parse(saved) : {};
   });
   const [newComment, setNewComment] = useState('');
+  const [editingComment, setEditingComment] = useState(null);
+  const [editCommentText, setEditCommentText] = useState('');
+  const [replyingTo, setReplyingTo] = useState(null);
+  const [replyText, setReplyText] = useState('');
   const [userRatings, setUserRatings] = useState(() => {
-    // Load ratings from localStorage
     const saved = localStorage.getItem('userRatings');
     return saved ? JSON.parse(saved) : {};
   });
@@ -65,46 +70,209 @@ function RecipeDisplay() {
   };
 
   const handleLike = (recipeId) => {
-    setLikedRecipes(prev => {
-      const newLikes = {
-        ...prev,
-        [recipeId]: !prev[recipeId]
-      };
-      return newLikes;
-    });
+    setLikedRecipes(prev => ({
+      ...prev,
+      [recipeId]: !prev[recipeId]
+    }));
   };
 
   const toggleCommentBox = (recipeId) => {
     setShowCommentBox(prev => prev === recipeId ? null : recipeId);
     setShowShareOptions(null);
+    setReplyingTo(null);
+    setEditingComment(null);
   };
 
   const handleAddComment = (recipeId) => {
     if (!newComment.trim()) return;
     
-    setComments(prev => {
-      const newComments = {
-        ...prev,
-        [recipeId]: [...(prev[recipeId] || []), {
-          id: Date.now(),
-          text: newComment,
-          author: 'You',
-          timestamp: new Date().toLocaleString()
-        }]
-      };
-      return newComments;
-    });
+    const commentData = {
+      id: Date.now(),
+      text: newComment,
+      author: 'You',
+      timestamp: new Date().toLocaleString(),
+      likes: 0,
+      reactions: {},
+      replies: []
+    };
+
+    setComments(prev => ({
+      ...prev,
+      [recipeId]: [...(prev[recipeId] || []), commentData]
+    }));
     setNewComment('');
   };
 
-  const handleRating = (recipeId, rating) => {
-    setUserRatings(prev => {
-      const newRatings = {
-        ...prev,
-        [recipeId]: rating
-      };
-      return newRatings;
+  const handleAddReply = (recipeId, commentId) => {
+    if (!replyText.trim()) return;
+    
+    const replyData = {
+      id: Date.now(),
+      text: replyText,
+      author: 'You',
+      timestamp: new Date().toLocaleString(),
+      likes: 0,
+      reactions: {}
+    };
+
+    setComments(prev => {
+      const updatedComments = (prev[recipeId] || []).map(comment => {
+        if (comment.id === commentId) {
+          return {
+            ...comment,
+            replies: [...comment.replies, replyData]
+          };
+        }
+        return comment;
+      });
+      return { ...prev, [recipeId]: updatedComments };
     });
+    
+    setReplyText('');
+    setReplyingTo(null);
+  };
+
+  const startEditingComment = (comment) => {
+    setEditingComment(comment.id);
+    setEditCommentText(comment.text);
+    setReplyingTo(null);
+  };
+
+  const saveEditedComment = (recipeId, commentId) => {
+    if (!editCommentText.trim()) return;
+    
+    setComments(prev => {
+      const updatedComments = (prev[recipeId] || []).map(comment => {
+        if (comment.id === commentId) {
+          return {
+            ...comment,
+            text: editCommentText
+          };
+        }
+        return comment;
+      });
+      return { ...prev, [recipeId]: updatedComments };
+    });
+    
+    setEditingComment(null);
+    setEditCommentText('');
+  };
+
+  const deleteComment = (recipeId, commentId, isReply = false, parentCommentId = null) => {
+    if (isReply && parentCommentId) {
+      // Delete a reply
+      setComments(prev => {
+        const updatedComments = (prev[recipeId] || []).map(comment => {
+          if (comment.id === parentCommentId) {
+            return {
+              ...comment,
+              replies: comment.replies.filter(reply => reply.id !== commentId)
+            };
+          }
+          return comment;
+        });
+        return { ...prev, [recipeId]: updatedComments };
+      });
+    } else {
+      // Delete a main comment
+      setComments(prev => ({
+        ...prev,
+        [recipeId]: (prev[recipeId] || []).filter(comment => comment.id !== commentId)
+      }));
+    }
+  };
+
+  const toggleLikeComment = (recipeId, commentId, isReply = false, parentCommentId = null) => {
+    setComments(prev => {
+      if (isReply && parentCommentId) {
+        const updatedComments = (prev[recipeId] || []).map(comment => {
+          if (comment.id === parentCommentId) {
+            const updatedReplies = comment.replies.map(reply => {
+              if (reply.id === commentId) {
+                return {
+                  ...reply,
+                  likes: reply.likes + (reply.reactions?.like ? -1 : 1),
+                  reactions: {
+                    ...reply.reactions,
+                    like: !reply.reactions?.like
+                  }
+                };
+              }
+              return reply;
+            });
+            return { ...comment, replies: updatedReplies };
+          }
+          return comment;
+        });
+        return { ...prev, [recipeId]: updatedComments };
+      } else {
+        const updatedComments = (prev[recipeId] || []).map(comment => {
+          if (comment.id === commentId) {
+            return {
+              ...comment,
+              likes: comment.likes + (comment.reactions?.like ? -1 : 1),
+              reactions: {
+                ...comment.reactions,
+                like: !comment.reactions?.like
+              }
+            };
+          }
+          return comment;
+        });
+        return { ...prev, [recipeId]: updatedComments };
+      }
+    });
+  };
+
+  const addReaction = (recipeId, commentId, reactionType, isReply = false, parentCommentId = null) => {
+    setComments(prev => {
+      if (isReply && parentCommentId) {
+        const updatedComments = (prev[recipeId] || []).map(comment => {
+          if (comment.id === parentCommentId) {
+            const updatedReplies = comment.replies.map(reply => {
+              if (reply.id === commentId) {
+                // If the same reaction is clicked, remove it
+                const currentReaction = reply.reactions?.type === reactionType ? null : reactionType;
+                return {
+                  ...reply,
+                  reactions: {
+                    ...reply.reactions,
+                    type: currentReaction
+                  }
+                };
+              }
+              return reply;
+            });
+            return { ...comment, replies: updatedReplies };
+          }
+          return comment;
+        });
+        return { ...prev, [recipeId]: updatedComments };
+      } else {
+        const updatedComments = (prev[recipeId] || []).map(comment => {
+          if (comment.id === commentId) {
+            // If the same reaction is clicked, remove it
+            const currentReaction = comment.reactions?.type === reactionType ? null : reactionType;
+            return {
+              ...comment,
+              reactions: {
+                ...comment.reactions,
+                type: currentReaction
+              }
+            };
+          }
+          return comment;
+        });
+        return { ...prev, [recipeId]: updatedComments };
+      }
+    });
+  };
+
+  const handleRating = (recipeId, rating) => {
+    setUserRatings(prev => ({
+      ...prev,
+      [recipeId]: rating
+    }));
   };
 
   const toggleShareOptions = (recipeId) => {
@@ -155,6 +323,106 @@ function RecipeDisplay() {
         <span className="rating-text">
           {currentRating ? `You rated this ${currentRating} star${currentRating > 1 ? 's' : ''}` : 'Rate this recipe'}
         </span>
+      </div>
+    );
+  };
+
+  const renderComment = (comment, recipeId, isReply = false, parentCommentId = null) => {
+    return (
+      <div key={comment.id} className={`comment ${isReply ? 'reply' : ''}`}>
+        <div className="comment-header">
+          <strong>{comment.author}</strong>
+          <span className="comment-time">{comment.timestamp}</span>
+        </div>
+        
+        {editingComment === comment.id ? (
+          <div className="comment-edit">
+            <input
+              type="text"
+              value={editCommentText}
+              onChange={(e) => setEditCommentText(e.target.value)}
+              autoFocus
+            />
+            <button onClick={() => saveEditedComment(recipeId, comment.id)}>Save</button>
+            <button onClick={() => setEditingComment(null)}>Cancel</button>
+          </div>
+        ) : (
+          <div className="comment-text">{comment.text}</div>
+        )}
+        
+        <div className="comment-actions">
+          <button 
+            className={`action-btn like-btn ${comment.reactions?.like ? 'active' : ''}`}
+            onClick={() => toggleLikeComment(recipeId, comment.id, isReply, parentCommentId)}
+          >
+            {comment.reactions?.like ? <FaThumbsUp /> : <FaRegThumbsUp />}
+            <span>{comment.likes || 0}</span>
+          </button>
+          
+          <div className="reaction-buttons">
+            <button 
+              className={`reaction-btn ${comment.reactions?.type === 'heart' ? 'active' : ''}`}
+              onClick={() => addReaction(recipeId, comment.id, 'heart', isReply, parentCommentId)}
+              title="Heart"
+            >
+              <FaHeart />
+            </button>
+            <button 
+              className={`reaction-btn ${comment.reactions?.type === 'wow' ? 'active' : ''}`}
+              onClick={() => addReaction(recipeId, comment.id, 'wow', isReply, parentCommentId)}
+              title="Wow"
+            >
+              <FaLaughSquint />
+            </button>
+          </div>
+          
+          {!isReply && (
+            <button 
+              className="action-btn reply-btn"
+              onClick={() => {
+                setReplyingTo(replyingTo === comment.id ? null : comment.id);
+                setEditingComment(null);
+              }}
+            >
+              <FaReply /> Reply
+            </button>
+          )}
+          
+          {comment.author === 'You' && (
+            <>
+              <button 
+                className="action-btn edit-btn"
+                onClick={() => startEditingComment(comment)}
+              >
+                <FaEdit /> Edit
+              </button>
+              <button 
+                className="action-btn delete-btn"
+                onClick={() => deleteComment(recipeId, comment.id, isReply, parentCommentId)}
+              >
+                <FaTrash /> Delete
+              </button>
+            </>
+          )}
+        </div>
+        
+        {replyingTo === comment.id && (
+          <div className="reply-input">
+            <input
+              type="text"
+              placeholder="Write a reply..."
+              value={replyText}
+              onChange={(e) => setReplyText(e.target.value)}
+            />
+            <button onClick={() => handleAddReply(recipeId, comment.id)}>Post</button>
+          </div>
+        )}
+        
+        {comment.replies && comment.replies.length > 0 && (
+          <div className="replies-container">
+            {comment.replies.map(reply => renderComment(reply, recipeId, true, comment.id))}
+          </div>
+        )}
       </div>
     );
   };
@@ -291,13 +559,7 @@ function RecipeDisplay() {
                     <div className="comment-section">
                       <div className="comment-list">
                         {recipeComments.length > 0 ? (
-                          recipeComments.map(comment => (
-                            <div key={comment.id} className="comment">
-                              <strong>{comment.author}</strong>
-                              <p>{comment.text}</p>
-                              <small>{comment.timestamp}</small>
-                            </div>
-                          ))
+                          recipeComments.map(comment => renderComment(comment, recipe.recipeId))
                         ) : (
                           <p className="no-comments">No comments yet. Be the first to comment!</p>
                         )}
