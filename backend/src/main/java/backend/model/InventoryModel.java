@@ -4,15 +4,17 @@ import jakarta.persistence.Entity;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.Id;
 
+import java.util.UUID;
+
 @Entity
 public class InventoryModel {
 
     @Id
     @GeneratedValue
-    private Long id;
+    private UUID id;
 
     private String recipeId;
-    private String recipeImage; // changed from int to String for filename
+    private String recipeImage;
     private String recipeName;
     private String recipeCategory;
     private String recipeQty;
@@ -22,7 +24,8 @@ public class InventoryModel {
     public InventoryModel() {
     }
 
-    public InventoryModel(Long id, String recipeId, String recipeImage, String recipeName, String recipeCategory, String recipeQty, String recipeDetails, String recipePrice) {
+    public InventoryModel(UUID id, String recipeId, String recipeImage, String recipeName,
+                          String recipeCategory, String recipeQty, String recipeDetails, String recipePrice) {
         this.id = id;
         this.recipeId = recipeId;
         this.recipeImage = recipeImage;
@@ -33,11 +36,11 @@ public class InventoryModel {
         this.recipePrice = recipePrice;
     }
 
-    public Long getId() {
+    public UUID getId() {
         return id;
     }
 
-    public void setId(Long id) {
+    public void setId(UUID id) {
         this.id = id;
     }
 

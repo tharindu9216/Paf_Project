@@ -12,8 +12,9 @@ function App() {
   return (
     <div>
       <Routes>
-        <Route path="/" element={<Welcome />} />
-        <Route path="/home" element={<Home />} />
+      
+        <Route path="/" element={<Home />} />
+        <Route path="/wel" element={<Welcome />} />
         <Route path="/addrecipe" element={<Addrecipe />} />
         <Route path="/display" element={<Displayrecipe />} />
         <Route path="/updaterecipe/:id" element={<Updaterecipe />} />

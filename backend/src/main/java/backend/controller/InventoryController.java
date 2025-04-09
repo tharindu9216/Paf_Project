@@ -86,7 +86,7 @@ public class InventoryController {
      }
 
      @GetMapping("/inventory/{id}")
-     public ResponseEntity<InventoryModel> getItemById(@PathVariable Long id) {
+     public ResponseEntity<InventoryModel> getItemById(@PathVariable UUID id) {
           return inventoryRepository.findById(id)
                   .map(ResponseEntity::ok)
                   .orElseGet(() -> ResponseEntity.notFound().build());
@@ -105,7 +105,7 @@ public class InventoryController {
      public ResponseEntity<?> updateItem(
              @RequestPart(value = "recipeDetails") String recipeDetails,
              @RequestPart(value = "file", required = false) MultipartFile file,
-             @PathVariable Long id
+             @PathVariable UUID id
      ) {
           try {
                if (!inventoryRepository.existsById(id)) {
@@ -148,20 +148,16 @@ public class InventoryController {
           }
      }
 
-     // DELETE method to delete an inventory item
      @DeleteMapping("/inventory/{id}")
-     public ResponseEntity<?> deleteItem(@PathVariable Long id) {
+     public ResponseEntity<?> deleteItem(@PathVariable UUID id) {
           try {
-               // Check if the item exists
                if (!inventoryRepository.existsById(id)) {
                     return ResponseEntity.status(HttpStatus.NOT_FOUND)
                             .body("Item not found with id: " + id);
                }
 
-               // Retrieve the item to get the associated image
                InventoryModel itemToDelete = inventoryRepository.findById(id).get();
 
-               // If there is an associated image, delete it from the file system
                if (itemToDelete.getRecipeImage() != null) {
                     String imagePath = UPLOAD_DIR + itemToDelete.getRecipeImage();
                     File imageFile = new File(imagePath);
@@ -174,9 +170,7 @@ public class InventoryController {
                     }
                }
 
-               // Delete the item from the database
                inventoryRepository.deleteById(id);
-
                return ResponseEntity.status(HttpStatus.NO_CONTENT).body("Item deleted successfully.");
           } catch (Exception e) {
                e.printStackTrace();
