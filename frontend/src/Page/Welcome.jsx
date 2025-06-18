@@ -1,22 +1,59 @@
 import React, { useEffect, useState } from 'react';
-import axios from 'axios';
 import { useNavigate } from 'react-router-dom';
-import { 
-  FaHeart, FaRegHeart, FaComment, FaShare, FaStar, FaRegStar, 
-  FaWhatsapp, FaFacebook, FaTwitter, FaLink, FaReply, FaEdit, 
-  FaTrash, FaThumbsUp, FaRegThumbsUp, FaLaughSquint 
-} from 'react-icons/fa';
+import { FaHeart, FaRegHeart, FaComment, FaEdit, FaTrash, FaPlus, FaSearch, FaUser, FaSignOutAlt } from 'react-icons/fa';
+import { GiCookingPot } from 'react-icons/gi';
+import { motion, AnimatePresence } from 'framer-motion';
+import api from "../api/axiosConfig";
+import Navbar from './Navbar';
 import './RecipeDisplay.css';
 
-function Welcome() {
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080';
+
+// Enhanced Welcome Component
+const Welcome = () => {
   return (
-    <div className="welcome-container">
+    <motion.div 
+      className="welcome-container"
+      initial={{ opacity: 0, y: 50 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.8 }}
+    >
       <h1 className="welcome-title">Welcome to FlavorFusion</h1>
       <p className="welcome-subtitle">Discover, Create, and Share Amazing Recipes</p>
+      <motion.div 
+        className="welcome-scroll-indicator"
+        animate={{ y: [0, 10, 0] }}
+        transition={{ duration: 2, repeat: Infinity }}
+      >
+        ↓ Scroll to explore ↓
+      </motion.div>
+    </motion.div>
+  );
+};
+
+// Image Component with Loading State
+const ImageWithFallback = ({ src, alt, className }) => {
+  const [imgSrc, setImgSrc] = useState(src);
+  const [loading, setLoading] = useState(true);
+
+  return (
+    <div className={`image-container ${loading ? 'loading' : ''}`}>
+      <img
+        src={imgSrc}
+        alt={alt}
+        className={className}
+        onLoad={() => setLoading(false)}
+        onError={() => {
+          setImgSrc('/images/default-recipe.jpg');
+          setLoading(false);
+        }}
+      />
+      {loading && <div className="image-loading-spinner"></div>}
     </div>
   );
-}
+};
 
+// Main RecipeDisplay Component
 function RecipeDisplay() {
   const [recipes, setRecipes] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -32,43 +69,60 @@ function RecipeDisplay() {
     return saved ? JSON.parse(saved) : {};
   });
   const [newComment, setNewComment] = useState('');
-  const [editingComment, setEditingComment] = useState(null);
-  const [editCommentText, setEditCommentText] = useState('');
-  const [replyingTo, setReplyingTo] = useState(null);
-  const [replyText, setReplyText] = useState('');
-  const [userRatings, setUserRatings] = useState(() => {
-    const saved = localStorage.getItem('userRatings');
-    return saved ? JSON.parse(saved) : {};
-  });
-  const [hoverRating, setHoverRating] = useState({});
-  const [showShareOptions, setShowShareOptions] = useState(null);
+  const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(null);
   const navigate = useNavigate();
 
-  // Save to localStorage whenever state changes
+  // Check auth status on load
+  useEffect(() => {
+    const checkAuth = async () => {
+      try {
+        const response = await api.get('/api/auth/check');
+        setIsLoggedIn(response.data.authenticated);
+      } catch (error) {
+        setIsLoggedIn(false);
+      }
+    };
+    checkAuth();
+  }, []);
+
+  // Save liked recipes and comments to localStorage
   useEffect(() => {
     localStorage.setItem('likedRecipes', JSON.stringify(likedRecipes));
-  }, [likedRecipes]);
-
-  useEffect(() => {
     localStorage.setItem('recipeComments', JSON.stringify(comments));
-  }, [comments]);
+  }, [likedRecipes, comments]);
 
-  useEffect(() => {
-    localStorage.setItem('userRatings', JSON.stringify(userRatings));
-  }, [userRatings]);
-
+  // Load recipes from API
   const loadRecipes = async () => {
     try {
       setIsLoading(true);
-      const result = await axios.get('http://localhost:8080/api/inventory');
-      setRecipes(result.data);
-      setIsLoading(false);
+      const response = await api.get("/api/inventory");
+      setRecipes(response.data);
     } catch (error) {
       console.error('Error loading recipes:', error);
+      if (error.response?.status === 401 || error.response?.status === 403) {
+        navigate('/login');
+      }
+    } finally {
       setIsLoading(false);
     }
   };
 
+  // Delete recipe
+  const handleDelete = async (recipeId) => {
+    try {
+      await api.delete(`/api/inventory/${recipeId}`);
+      setRecipes(recipes.filter(recipe => recipe.id !== recipeId));
+      setShowDeleteConfirm(null);
+    } catch (error) {
+      console.error('Error deleting recipe:', error);
+      if (error.response?.status === 401) {
+        navigate('/login');
+      }
+    }
+  };
+
+  // Like/unlike recipe
   const handleLike = (recipeId) => {
     setLikedRecipes(prev => ({
       ...prev,
@@ -76,376 +130,63 @@ function RecipeDisplay() {
     }));
   };
 
+  // Toggle comment box
   const toggleCommentBox = (recipeId) => {
     setShowCommentBox(prev => prev === recipeId ? null : recipeId);
-    setShowShareOptions(null);
-    setReplyingTo(null);
-    setEditingComment(null);
   };
 
+  // Add comment
   const handleAddComment = (recipeId) => {
-    if (!newComment.trim()) return;
-    
-    const commentData = {
-      id: Date.now(),
-      text: newComment,
-      author: 'You',
-      timestamp: new Date().toLocaleString(),
-      likes: 0,
-      reactions: {},
-      replies: []
-    };
-
-    setComments(prev => ({
-      ...prev,
-      [recipeId]: [...(prev[recipeId] || []), commentData]
-    }));
-    setNewComment('');
-  };
-
-  const handleAddReply = (recipeId, commentId) => {
-    if (!replyText.trim()) return;
-    
-    const replyData = {
-      id: Date.now(),
-      text: replyText,
-      author: 'You',
-      timestamp: new Date().toLocaleString(),
-      likes: 0,
-      reactions: {}
-    };
-
-    setComments(prev => {
-      const updatedComments = (prev[recipeId] || []).map(comment => {
-        if (comment.id === commentId) {
-          return {
-            ...comment,
-            replies: [...comment.replies, replyData]
-          };
-        }
-        return comment;
-      });
-      return { ...prev, [recipeId]: updatedComments };
-    });
-    
-    setReplyText('');
-    setReplyingTo(null);
-  };
-
-  const startEditingComment = (comment) => {
-    setEditingComment(comment.id);
-    setEditCommentText(comment.text);
-    setReplyingTo(null);
-  };
-
-  const saveEditedComment = (recipeId, commentId) => {
-    if (!editCommentText.trim()) return;
-    
-    setComments(prev => {
-      const updatedComments = (prev[recipeId] || []).map(comment => {
-        if (comment.id === commentId) {
-          return {
-            ...comment,
-            text: editCommentText
-          };
-        }
-        return comment;
-      });
-      return { ...prev, [recipeId]: updatedComments };
-    });
-    
-    setEditingComment(null);
-    setEditCommentText('');
-  };
-
-  const deleteComment = (recipeId, commentId, isReply = false, parentCommentId = null) => {
-    if (isReply && parentCommentId) {
-      // Delete a reply
-      setComments(prev => {
-        const updatedComments = (prev[recipeId] || []).map(comment => {
-          if (comment.id === parentCommentId) {
-            return {
-              ...comment,
-              replies: comment.replies.filter(reply => reply.id !== commentId)
-            };
-          }
-          return comment;
-        });
-        return { ...prev, [recipeId]: updatedComments };
-      });
-    } else {
-      // Delete a main comment
+    if (newComment.trim()) {
       setComments(prev => ({
         ...prev,
-        [recipeId]: (prev[recipeId] || []).filter(comment => comment.id !== commentId)
+        [recipeId]: [...(prev[recipeId] || []), {
+          id: Date.now(),
+          text: newComment,
+          date: new Date().toISOString(),
+          replies: []
+        }]
       }));
+      setNewComment('');
     }
   };
 
-  const toggleLikeComment = (recipeId, commentId, isReply = false, parentCommentId = null) => {
-    setComments(prev => {
-      if (isReply && parentCommentId) {
-        const updatedComments = (prev[recipeId] || []).map(comment => {
-          if (comment.id === parentCommentId) {
-            const updatedReplies = comment.replies.map(reply => {
-              if (reply.id === commentId) {
-                return {
-                  ...reply,
-                  likes: reply.likes + (reply.reactions?.like ? -1 : 1),
-                  reactions: {
-                    ...reply.reactions,
-                    like: !reply.reactions?.like
-                  }
-                };
-              }
-              return reply;
-            });
-            return { ...comment, replies: updatedReplies };
-          }
-          return comment;
-        });
-        return { ...prev, [recipeId]: updatedComments };
-      } else {
-        const updatedComments = (prev[recipeId] || []).map(comment => {
-          if (comment.id === commentId) {
-            return {
-              ...comment,
-              likes: comment.likes + (comment.reactions?.like ? -1 : 1),
-              reactions: {
-                ...comment.reactions,
-                like: !comment.reactions?.like
-              }
-            };
-          }
-          return comment;
-        });
-        return { ...prev, [recipeId]: updatedComments };
-      }
-    });
-  };
-
-  const addReaction = (recipeId, commentId, reactionType, isReply = false, parentCommentId = null) => {
-    setComments(prev => {
-      if (isReply && parentCommentId) {
-        const updatedComments = (prev[recipeId] || []).map(comment => {
-          if (comment.id === parentCommentId) {
-            const updatedReplies = comment.replies.map(reply => {
-              if (reply.id === commentId) {
-                // If the same reaction is clicked, remove it
-                const currentReaction = reply.reactions?.type === reactionType ? null : reactionType;
-                return {
-                  ...reply,
-                  reactions: {
-                    ...reply.reactions,
-                    type: currentReaction
-                  }
-                };
-              }
-              return reply;
-            });
-            return { ...comment, replies: updatedReplies };
-          }
-          return comment;
-        });
-        return { ...prev, [recipeId]: updatedComments };
-      } else {
-        const updatedComments = (prev[recipeId] || []).map(comment => {
-          if (comment.id === commentId) {
-            // If the same reaction is clicked, remove it
-            const currentReaction = comment.reactions?.type === reactionType ? null : reactionType;
-            return {
-              ...comment,
-              reactions: {
-                ...comment.reactions,
-                type: currentReaction
-              }
-            };
-          }
-          return comment;
-        });
-        return { ...prev, [recipeId]: updatedComments };
-      }
-    });
-  };
-
-  const handleRating = (recipeId, rating) => {
-    setUserRatings(prev => ({
-      ...prev,
-      [recipeId]: rating
-    }));
-  };
-
-  const toggleShareOptions = (recipeId) => {
-    setShowShareOptions(prev => prev === recipeId ? null : recipeId);
-    setShowCommentBox(null);
-  };
-
-  const shareRecipe = (platform, recipe) => {
-    const recipeUrl = `${window.location.origin}/recipedetails/${recipe.recipeId}`;
-    const shareText = `Check out this delicious recipe: ${recipe.recipeName} - ${recipeUrl}`;
-    
-    switch(platform) {
-      case 'whatsapp':
-        window.open(`https://wa.me/?text=${encodeURIComponent(shareText)}`, '_blank');
-        break;
-      case 'facebook':
-        window.open(`https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(recipeUrl)}`, '_blank');
-        break;
-      case 'twitter':
-        window.open(`https://twitter.com/intent/tweet?text=${encodeURIComponent(shareText)}`, '_blank');
-        break;
-      case 'copy':
-        navigator.clipboard.writeText(recipeUrl);
-        alert('Link copied to clipboard!');
-        break;
-      default:
-        break;
+  // Logout
+  const handleLogout = async () => {
+    try {
+      await api.post('/api/auth/logout');
+      setIsLoggedIn(false);
+      navigate('/login');
+    } catch (error) {
+      console.error('Logout failed:', error);
     }
   };
 
-  const renderRatingStars = (recipeId) => {
-    const currentRating = userRatings[recipeId] || 0;
-    const currentHover = hoverRating[recipeId] || 0;
-    
-    return (
-      <div className="rating-stars">
-        {[1, 2, 3, 4, 5].map((star) => (
-          <span 
-            key={star}
-            className={`star ${star <= (currentHover || currentRating) ? 'filled' : ''}`}
-            onMouseEnter={() => setHoverRating(prev => ({ ...prev, [recipeId]: star }))}
-            onMouseLeave={() => setHoverRating(prev => ({ ...prev, [recipeId]: 0 }))}
-            onClick={() => handleRating(recipeId, star)}
-          >
-            {star <= (currentHover || currentRating) ? <FaStar /> : <FaRegStar />}
-          </span>
-        ))}
-        <span className="rating-text">
-          {currentRating ? `You rated this ${currentRating} star${currentRating > 1 ? 's' : ''}` : 'Rate this recipe'}
-        </span>
-      </div>
-    );
-  };
-
-  const renderComment = (comment, recipeId, isReply = false, parentCommentId = null) => {
-    return (
-      <div key={comment.id} className={`comment ${isReply ? 'reply' : ''}`}>
-        <div className="comment-header">
-          <strong>{comment.author}</strong>
-          <span className="comment-time">{comment.timestamp}</span>
-        </div>
-        
-        {editingComment === comment.id ? (
-          <div className="comment-edit">
-            <input
-              type="text"
-              value={editCommentText}
-              onChange={(e) => setEditCommentText(e.target.value)}
-              autoFocus
-            />
-            <button onClick={() => saveEditedComment(recipeId, comment.id)}>Save</button>
-            <button onClick={() => setEditingComment(null)}>Cancel</button>
-          </div>
-        ) : (
-          <div className="comment-text">{comment.text}</div>
-        )}
-        
-        <div className="comment-actions">
-          <button 
-            className={`action-btn like-btn ${comment.reactions?.like ? 'active' : ''}`}
-            onClick={() => toggleLikeComment(recipeId, comment.id, isReply, parentCommentId)}
-          >
-            {comment.reactions?.like ? <FaThumbsUp /> : <FaRegThumbsUp />}
-            <span>{comment.likes || 0}</span>
-          </button>
-          
-          <div className="reaction-buttons">
-            <button 
-              className={`reaction-btn ${comment.reactions?.type === 'heart' ? 'active' : ''}`}
-              onClick={() => addReaction(recipeId, comment.id, 'heart', isReply, parentCommentId)}
-              title="Heart"
-            >
-              <FaHeart />
-            </button>
-            <button 
-              className={`reaction-btn ${comment.reactions?.type === 'wow' ? 'active' : ''}`}
-              onClick={() => addReaction(recipeId, comment.id, 'wow', isReply, parentCommentId)}
-              title="Wow"
-            >
-              <FaLaughSquint />
-            </button>
-          </div>
-          
-          {!isReply && (
-            <button 
-              className="action-btn reply-btn"
-              onClick={() => {
-                setReplyingTo(replyingTo === comment.id ? null : comment.id);
-                setEditingComment(null);
-              }}
-            >
-              <FaReply /> Reply
-            </button>
-          )}
-          
-          {comment.author === 'You' && (
-            <>
-              <button 
-                className="action-btn edit-btn"
-                onClick={() => startEditingComment(comment)}
-              >
-                <FaEdit /> Edit
-              </button>
-              <button 
-                className="action-btn delete-btn"
-                onClick={() => deleteComment(recipeId, comment.id, isReply, parentCommentId)}
-              >
-                <FaTrash /> Delete
-              </button>
-            </>
-          )}
-        </div>
-        
-        {replyingTo === comment.id && (
-          <div className="reply-input">
-            <input
-              type="text"
-              placeholder="Write a reply..."
-              value={replyText}
-              onChange={(e) => setReplyText(e.target.value)}
-            />
-            <button onClick={() => handleAddReply(recipeId, comment.id)}>Post</button>
-          </div>
-        )}
-        
-        {comment.replies && comment.replies.length > 0 && (
-          <div className="replies-container">
-            {comment.replies.map(reply => renderComment(reply, recipeId, true, comment.id))}
-          </div>
-        )}
-      </div>
-    );
-  };
-
+  // Load recipes on component mount
   useEffect(() => {
     loadRecipes();
   }, []);
 
-  const categories = ['All', ...new Set(recipes.map(recipe => recipe.recipeCategory))];
+  // Get unique categories
+  const categories = ['All', ...new Set(recipes.map(recipe => recipe.category))];
 
+  // Filter recipes based on search and category
   const filteredRecipes = recipes.filter(recipe => {
-    const matchesSearch = recipe.recipeName.toLowerCase().includes(searchTerm.toLowerCase()) || 
-                         recipe.recipeDetails.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesCategory = selectedCategory === 'All' || recipe.recipeCategory === selectedCategory;
+    const matchesSearch = (recipe.name ?? '').toLowerCase().includes(searchTerm.toLowerCase()) || 
+                         (recipe.description ?? '').toLowerCase().includes(searchTerm.toLowerCase());
+    const matchesCategory = selectedCategory === 'All' || recipe.category === selectedCategory;
     return matchesSearch && matchesCategory;
   });
 
   return (
     <div className="recipe-app-container">
+      <Navbar isLoggedIn={isLoggedIn} onLogout={handleLogout} />
+      
       <Welcome />
       
       <div className="recipe-controls">
         <div className="search-container">
+          <FaSearch className="search-icon" />
           <input
             type="text"
             placeholder="Search recipes..."
@@ -453,7 +194,6 @@ function RecipeDisplay() {
             onChange={(e) => setSearchTerm(e.target.value)}
             className="search-input"
           />
-          <span className="search-icon">🔍</span>
         </div>
         
         <div className="filter-container">
@@ -483,83 +223,93 @@ function RecipeDisplay() {
       ) : (
         <div className="recipe-grid">
           {filteredRecipes.map((recipe) => {
-            const recipeComments = comments[recipe.recipeId] || [];
+            const recipeComments = comments[recipe.id] || [];
             
             return (
-              <div key={recipe.recipeId} className="recipe-card">
+              <motion.div 
+                key={recipe.id} 
+                className="recipe-card"
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.5 }}
+                whileHover={{ y: -5 }}
+              >
                 <div className="recipe-image-container">
-                  {recipe.recipeImage && (
-                    <img
-                      src={`http://localhost:8080/api/uploads/${recipe.recipeImage}`}
-                      alt={recipe.recipeName}
+                  {recipe.imageUrl ? (
+                    <ImageWithFallback
+                      src={`${API_BASE_URL}/uploads/${recipe.imageUrl.startsWith('/uploads/') ? recipe.imageUrl.substring('/uploads/'.length) : recipe.imageUrl}`}
+                      alt={recipe.name}
                       className="recipe-image"
                     />
+                  ) : (
+                    <div className="recipe-image-placeholder">
+                      <span>No Image Available</span>
+                    </div>
                   )}
-                  <span className="recipe-category">{recipe.recipeCategory}</span>
-                </div>
-                <div className="recipe-content">
-                  <h3 className="recipe-title">{recipe.recipeName}</h3>
-                  <p className="recipe-details">{recipe.recipeDetails}</p>
+                  <span className="recipe-category">{recipe.category}</span>
                   
-                  <div className="user-rating-section">
-                    {renderRatingStars(recipe.recipeId)}
-                  </div>
+                  {isLoggedIn && (
+                    <div className="recipe-actions">
+                      <button 
+                        className="edit-btn"
+                        onClick={() => navigate(`/edit-recipe/${recipe.id}`)}
+                      >
+                        <FaEdit />
+                      </button>
+                      <button 
+                        className="delete-btn"
+                        onClick={() => setShowDeleteConfirm(recipe.id)}
+                      >
+                        <FaTrash />
+                      </button>
+                    </div>
+                  )}
+                </div>
+                
+                <div className="recipe-content">
+                  <h3 className="recipe-title">{recipe.name}</h3>
+                  <p className="recipe-details">{recipe.description}</p>
                   
                   <div className="recipe-meta">
-                    <span className="recipe-price">${recipe.recipePrice}</span>
-                    <span className="recipe-quantity">{recipe.recipeQty} servings</span>
+                    <span className="recipe-price">LKR {recipe.price}</span>
+                    <span className="recipe-quantity">{recipe.quantity} servings</span>
                   </div>
                   
                   <div className="recipe-social">
-                    <button 
-                      className={`social-btn like-btn ${likedRecipes[recipe.recipeId] ? 'liked' : ''}`}
-                      onClick={() => handleLike(recipe.recipeId)}
+                    <motion.button 
+                      className={`social-btn like-btn ${likedRecipes[recipe.id] ? 'liked' : ''}`}
+                      onClick={() => handleLike(recipe.id)}
+                      whileTap={{ scale: 0.9 }}
                     >
-                      {likedRecipes[recipe.recipeId] ? <FaHeart /> : <FaRegHeart />}
-                      <span>{likedRecipes[recipe.recipeId] ? 'Liked' : 'Like'}</span>
-                    </button>
+                      {likedRecipes[recipe.id] ? <FaHeart /> : <FaRegHeart />}
+                      <span>{likedRecipes[recipe.id] ? 'Liked' : 'Like'}</span>
+                    </motion.button>
                     
-                    <button 
+                    <motion.button 
                       className="social-btn comment-btn"
-                      onClick={() => toggleCommentBox(recipe.recipeId)}
+                      onClick={() => toggleCommentBox(recipe.id)}
+                      whileTap={{ scale: 0.9 }}
                     >
                       <FaComment />
                       <span>Comment ({recipeComments.length})</span>
-                    </button>
-                    
-                    <div className="share-container">
-                      <button 
-                        className="social-btn share-btn"
-                        onClick={() => toggleShareOptions(recipe.recipeId)}
-                      >
-                        <FaShare />
-                        <span>Share</span>
-                      </button>
-                      
-                      {showShareOptions === recipe.recipeId && (
-                        <div className="share-options">
-                          <button onClick={() => shareRecipe('whatsapp', recipe)}>
-                            <FaWhatsapp /> WhatsApp
-                          </button>
-                          <button onClick={() => shareRecipe('facebook', recipe)}>
-                            <FaFacebook /> Facebook
-                          </button>
-                          <button onClick={() => shareRecipe('twitter', recipe)}>
-                            <FaTwitter /> Twitter
-                          </button>
-                          <button onClick={() => shareRecipe('copy', recipe)}>
-                            <FaLink /> Copy Link
-                          </button>
-                        </div>
-                      )}
-                    </div>
+                    </motion.button>
                   </div>
                   
-                  {showCommentBox === recipe.recipeId && (
-                    <div className="comment-section">
+                  {showCommentBox === recipe.id && (
+                    <motion.div 
+                      className="comment-section"
+                      initial={{ opacity: 0, height: 0 }}
+                      animate={{ opacity: 1, height: 'auto' }}
+                      exit={{ opacity: 0, height: 0 }}
+                    >
                       <div className="comment-list">
                         {recipeComments.length > 0 ? (
-                          recipeComments.map(comment => renderComment(comment, recipe.recipeId))
+                          recipeComments.map(comment => (
+                            <div key={comment.id} className="comment">
+                              <p>{comment.text}</p>
+                              <small>{new Date(comment.date).toLocaleString()}</small>
+                            </div>
+                          ))
                         ) : (
                           <p className="no-comments">No comments yet. Be the first to comment!</p>
                         )}
@@ -571,19 +321,51 @@ function RecipeDisplay() {
                           value={newComment}
                           onChange={(e) => setNewComment(e.target.value)}
                         />
-                        <button onClick={() => handleAddComment(recipe.recipeId)}>Post</button>
+                        <button onClick={() => handleAddComment(recipe.id)}>Post</button>
                       </div>
-                    </div>
+                    </motion.div>
                   )}
                   
-                  <button 
+                  <motion.button 
                     className="view-recipe-btn"
-                    onClick={() => navigate(`/recipedetails/${recipe.recipeId}`)}
+                    onClick={() => navigate(`/recipedetails/${recipe.id}`)}
+                    whileHover={{ scale: 1.02 }}
+                    whileTap={{ scale: 0.98 }}
                   >
                     View Recipe
-                  </button>
+                  </motion.button>
                 </div>
-              </div>
+                
+                {/* Delete Confirmation Modal */}
+                <AnimatePresence>
+                  {showDeleteConfirm === recipe.id && (
+                    <motion.div 
+                      className="delete-confirm-modal"
+                      initial={{ opacity: 0 }}
+                      animate={{ opacity: 1 }}
+                      exit={{ opacity: 0 }}
+                    >
+                      <div className="modal-content">
+                        <p>Are you sure you want to delete this recipe?</p>
+                        <div className="modal-buttons">
+                          <button 
+                            className="confirm-btn"
+                            onClick={() => handleDelete(recipe.id)}
+                          >
+                            Yes, Delete
+                          </button>
+                          <button 
+                            className="cancel-btn"
+                            onClick={() => setShowDeleteConfirm(null)}
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      </div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </motion.div>
             );
           })}
         </div>

@@ -7,6 +7,11 @@ import Welcome from "./Page/Welcome";
 import "./App.css";
 import Displayrecipe from "./components/Displayrecipe/Displayrecipe";
 import Updaterecipe from "./components/Updaterecipe/Updaterecipe";
+import Login from "./Page/Login";
+import Register from "./Page/Register";
+
+
+
 
 function App() {
   return (
@@ -18,6 +23,10 @@ function App() {
         <Route path="/addrecipe" element={<Addrecipe />} />
         <Route path="/display" element={<Displayrecipe />} />
         <Route path="/updaterecipe/:id" element={<Updaterecipe />} />
+        <Route path="/login" element={<Login />} />
+        <Route path="/register" element={<Register />} />
+        
+        {/* Catch-all route for 404 Not Found */}
       </Routes>
     </div>
   );

@@ -1,181 +1,84 @@
 package backend.controller;
 
-import backend.model.InventoryModel;
+import backend.DTO.InventoryRequest;  // Changed from backend.dto to backend.DTO
+import backend.model.Inventory;
 import backend.repository.InventoryRepository;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.core.io.FileSystemResource;
-import org.springframework.http.HttpStatus;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
-import java.io.File;
+import java.util.List;
+import java.util.UUID;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.util.UUID;
+import java.util.HashMap;
+import java.util.Map;
 
 @RestController
-@CrossOrigin(origins = "http://localhost:5173")
-@RequestMapping("/api")
+@RequestMapping("/api/inventory")
 public class InventoryController {
 
-     @Autowired
-     private InventoryRepository inventoryRepository;
+    @Autowired
+    private InventoryRepository inventoryRepository;
 
-     private final String UPLOAD_DIR = System.getProperty("user.dir") + "/uploads/";
+    // Define upload directory for images
+    private static final String UPLOAD_DIR = "./uploads/";
 
-     @PostMapping("/inventory")
-     public ResponseEntity<?> newInventoryModel(@RequestBody InventoryModel newInventoryModel) {
-          try {
-               if (newInventoryModel == null) {
-                    return new ResponseEntity<>("Request body cannot be null", HttpStatus.BAD_REQUEST);
-               }
+    @GetMapping
+    public ResponseEntity<List<Inventory>> getAllInventory() {
+        List<Inventory> inventory = inventoryRepository.findAll();
+        return ResponseEntity.ok(inventory);
+    }
 
-               InventoryModel savedInventory = inventoryRepository.save(newInventoryModel);
-               return new ResponseEntity<>(savedInventory, HttpStatus.CREATED);
-          } catch (Exception e) {
-               e.printStackTrace();
-               return new ResponseEntity<>("Error saving inventory: " + e.getMessage(), HttpStatus.INTERNAL_SERVER_ERROR);
-          }
-     }
+    @PostMapping("/recipeImage")
+    public ResponseEntity<?> uploadRecipeImage(@RequestParam("file") MultipartFile file) {
+        if (file.isEmpty()) {
+            return ResponseEntity.badRequest().body(new HashMap<String, String>() {{ put("message", "Please select a file to upload"); }});
+        }
 
-     @GetMapping("/inventory")
-     public ResponseEntity<?> getAllInventory() {
-          return new ResponseEntity<>(inventoryRepository.findAll(), HttpStatus.OK);
-     }
+        try {
+            // Create the upload directory if it doesn't exist
+            Path uploadPath = Paths.get(UPLOAD_DIR);
+            if (!Files.exists(uploadPath)) {
+                Files.createDirectories(uploadPath);
+            }
 
-     @PostMapping("/inventory/recipeImage")
-     public ResponseEntity<String> uploadRecipeImage(@RequestParam("file") MultipartFile file) {
-          try {
-               if (file == null || file.isEmpty()) {
-                    return new ResponseEntity<>("No file selected", HttpStatus.BAD_REQUEST);
-               }
+            // Save the file
+            String fileName = UUID.randomUUID().toString() + "-" + file.getOriginalFilename();
+            Path filePath = uploadPath.resolve(fileName);
+            Files.copy(file.getInputStream(), filePath);
 
-               Path uploadPath = Paths.get(UPLOAD_DIR);
-               if (!Files.exists(uploadPath)) {
-                    Files.createDirectories(uploadPath);
-               }
+            // Return the URL or path to the saved image
+            // In a real application, this would be a publicly accessible URL
+            Map<String, String> response = new HashMap<>();
+            response.put("imageUrl", fileName); // Return only the filename
+            return ResponseEntity.ok(response);
 
-               String originalFilename = file.getOriginalFilename();
-               if (originalFilename == null || originalFilename.isEmpty()) {
-                    return new ResponseEntity<>("Invalid file name", HttpStatus.BAD_REQUEST);
-               }
+        } catch (IOException e) {
+            e.printStackTrace();
+            return ResponseEntity.status(500).body(new HashMap<String, String>() {{ put("message", "Failed to upload image: " + e.getMessage()); }});
+        }
+    }
 
-               String fileExtension = originalFilename.substring(originalFilename.lastIndexOf("."));
-               if (!fileExtension.equalsIgnoreCase(".jpg") &&
-                       !fileExtension.equalsIgnoreCase(".png") &&
-                       !fileExtension.equalsIgnoreCase(".jpeg")) {
-                    return new ResponseEntity<>("Only image files (jpg, jpeg, png) are allowed", HttpStatus.BAD_REQUEST);
-               }
+    @PostMapping
+    public ResponseEntity<Inventory> createInventory(@RequestBody InventoryRequest inventoryRequest) {
+        // Map InventoryRequest to Inventory entity
+        Inventory inventory = new Inventory();
+        inventory.setName(inventoryRequest.getName());
+        inventory.setCategory(inventoryRequest.getCategory());
+        inventory.setQuantity(inventoryRequest.getQuantity());
+        inventory.setDescription(inventoryRequest.getDescription());
+        inventory.setPrice(inventoryRequest.getPrice());
+        inventory.setImageUrl(inventoryRequest.getImageUrl()); // Set the imageUrl
 
-               String uniqueFilename = UUID.randomUUID().toString() + fileExtension;
-               Path filePath = uploadPath.resolve(uniqueFilename);
-               file.transferTo(filePath.toFile());
+        Inventory savedInventory = inventoryRepository.save(inventory);
+        return ResponseEntity.ok(savedInventory);
+    }
 
-               return new ResponseEntity<>(uniqueFilename, HttpStatus.OK);
-          } catch (IOException e) {
-               e.printStackTrace();
-               return new ResponseEntity<>("Failed to upload image: " + e.getMessage(), HttpStatus.INTERNAL_SERVER_ERROR);
-          } catch (Exception e) {
-               e.printStackTrace();
-               return new ResponseEntity<>("An unexpected error occurred during image upload.", HttpStatus.INTERNAL_SERVER_ERROR);
-          }
-     }
-
-     @GetMapping("/inventory/{id}")
-     public ResponseEntity<InventoryModel> getItemById(@PathVariable UUID id) {
-          return inventoryRepository.findById(id)
-                  .map(ResponseEntity::ok)
-                  .orElseGet(() -> ResponseEntity.notFound().build());
-     }
-
-     @GetMapping("/uploads/{filename}")
-     public ResponseEntity<FileSystemResource> getImage(@PathVariable String filename) {
-          File file = new File(UPLOAD_DIR + filename);
-          if (!file.exists()) {
-               return ResponseEntity.notFound().build();
-          }
-          return ResponseEntity.ok(new FileSystemResource(file));
-     }
-
-     @PutMapping("/inventory/{id}")
-     public ResponseEntity<?> updateItem(
-             @RequestPart(value = "recipeDetails") String recipeDetails,
-             @RequestPart(value = "file", required = false) MultipartFile file,
-             @PathVariable UUID id
-     ) {
-          try {
-               if (!inventoryRepository.existsById(id)) {
-                    return ResponseEntity.status(HttpStatus.NOT_FOUND)
-                            .body("Item not found with id: " + id);
-               }
-
-               ObjectMapper mapper = new ObjectMapper();
-               InventoryModel newInventoryModel = mapper.readValue(recipeDetails, InventoryModel.class);
-
-               InventoryModel existingInventory = inventoryRepository.findById(id).get();
-               existingInventory.setRecipeId(newInventoryModel.getRecipeId());
-               existingInventory.setRecipeName(newInventoryModel.getRecipeName());
-               existingInventory.setRecipeCategory(newInventoryModel.getRecipeCategory());
-               existingInventory.setRecipeQty(newInventoryModel.getRecipeQty());
-               existingInventory.setRecipeDetails(newInventoryModel.getRecipeDetails());
-               existingInventory.setRecipePrice(newInventoryModel.getRecipePrice());
-
-               if (file != null && !file.isEmpty()) {
-                    String folder = UPLOAD_DIR;
-                    String fileExtension = file.getOriginalFilename().substring(
-                            file.getOriginalFilename().lastIndexOf("."));
-                    String recipeImage = UUID.randomUUID().toString() + fileExtension;
-
-                    try {
-                         file.transferTo(Paths.get(folder + recipeImage));
-                         existingInventory.setRecipeImage(recipeImage);
-                    } catch (IOException e) {
-                         return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                                 .body("Error saving recipe image: " + e.getMessage());
-                    }
-               }
-
-               InventoryModel updatedInventory = inventoryRepository.save(existingInventory);
-               return ResponseEntity.ok(updatedInventory);
-          } catch (Exception e) {
-               e.printStackTrace();
-               return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                       .body("Error updating item: " + e.getMessage());
-          }
-     }
-
-     @DeleteMapping("/inventory/{id}")
-     public ResponseEntity<?> deleteItem(@PathVariable UUID id) {
-          try {
-               if (!inventoryRepository.existsById(id)) {
-                    return ResponseEntity.status(HttpStatus.NOT_FOUND)
-                            .body("Item not found with id: " + id);
-               }
-
-               InventoryModel itemToDelete = inventoryRepository.findById(id).get();
-
-               if (itemToDelete.getRecipeImage() != null) {
-                    String imagePath = UPLOAD_DIR + itemToDelete.getRecipeImage();
-                    File imageFile = new File(imagePath);
-                    if (imageFile.exists()) {
-                         boolean isDeleted = imageFile.delete();
-                         if (!isDeleted) {
-                              return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                                      .body("Failed to delete image file.");
-                         }
-                    }
-               }
-
-               inventoryRepository.deleteById(id);
-               return ResponseEntity.status(HttpStatus.NO_CONTENT).body("Item deleted successfully.");
-          } catch (Exception e) {
-               e.printStackTrace();
-               return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                       .body("Error deleting item: " + e.getMessage());
-          }
-     }
+    // ... other endpoints like PUT, DELETE, etc., will go here
 }

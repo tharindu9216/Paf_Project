@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import axios from 'axios';
+import api from '../../api/axiosConfig'; // Ensure this path is correct relative to Addrecipe.jsx
 import { motion } from 'framer-motion';
 import styled from 'styled-components';
 import { FaUpload, FaPlus, FaExclamationTriangle } from 'react-icons/fa';
@@ -283,8 +283,8 @@ const recipeSchema = yup.object().shape({
     .max(10000, 'Price cannot exceed LKR 10,000'),
   recipeImage: yup.mixed()
     .required('Image is required')
-    .test('fileSize', 'File too large (max 2MB)', value => {
-      return value && value.size <= 2000000;
+    .test('fileSize', 'File too large (max 10MB)', value => {
+      return value && value.size <= 10000000;
     })
     .test('fileType', 'Unsupported file format', value => {
       return value && ['image/jpeg', 'image/png', 'image/webp'].includes(value.type);
@@ -357,8 +357,8 @@ function AddRecipe() {
       formData.append('file', inventory.recipeImage);
       
       // Secure file upload with progress monitoring
-      const uploadResponse = await axios.post(
-        'http://localhost:8080/api/inventory/recipeImage',
+      const uploadResponse = await api.post(
+        '/api/inventory/recipeImage',
         formData,
         {
           headers: {
@@ -370,18 +370,19 @@ function AddRecipe() {
       // Prepare data with server-side validation in mind
       const recipeData = {
         ...inventory,
-        recipeImage: uploadResponse.data,
+        recipeImage: undefined,
+        imageUrl: uploadResponse.data.imageUrl,
         // Sanitize all string inputs
-        recipeName: DOMPurify.sanitize(inventory.recipeName),
-        recipeCategory: DOMPurify.sanitize(inventory.recipeCategory),
-        recipeDetails: DOMPurify.sanitize(inventory.recipeDetails),
+        name: DOMPurify.sanitize(inventory.recipeName),
+        category: DOMPurify.sanitize(inventory.recipeCategory),
+        description: DOMPurify.sanitize(inventory.recipeDetails),
         // Convert numbers explicitly
-        recipeQty: parseInt(inventory.recipeQty, 10),
-        recipePrice: parseFloat(inventory.recipePrice)
+        quantity: parseInt(inventory.recipeQty, 10),
+        price: parseFloat(inventory.recipePrice)
       };
 
       // Secure POST request
-      await axios.post('http://localhost:8080/api/inventory', recipeData, {
+      await api.post('/api/inventory', recipeData, {
         headers: {
           'Content-Type': 'application/json'
         }

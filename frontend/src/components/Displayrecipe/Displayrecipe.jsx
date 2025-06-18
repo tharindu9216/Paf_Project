@@ -241,6 +241,8 @@ const ModalImage = styled.img`
   margin-bottom: 1.5rem;
 `;
 
+const itemsPerPage = 5; // Define items per page
+
 function Displayrecipe() {
   const [inventory, setInventory] = useState([]);
   const [filteredInventory, setFilteredInventory] = useState([]);
@@ -248,7 +250,6 @@ function Displayrecipe() {
   const [deletingId, setDeletingId] = useState(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
-  const [itemsPerPage] = useState(8);
   const [selectedRecipe, setSelectedRecipe] = useState(null);
   const [showModal, setShowModal] = useState(false);
 
@@ -266,10 +267,14 @@ function Displayrecipe() {
   };
 
   useEffect(() => {
+    loadInventory();
+  }, []);
+
+  useEffect(() => {
     const results = inventory.filter(item =>
-      item.recipeName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      item.recipeCategory.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      item.recipeDetails.toLowerCase().includes(searchTerm.toLowerCase())
+      item.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      item.category.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      item.description.toLowerCase().includes(searchTerm.toLowerCase())
     );
     setFilteredInventory(results);
     setCurrentPage(1);
@@ -304,22 +309,22 @@ function Displayrecipe() {
       doc.setTextColor(255, 255, 255);
       doc.setFontSize(28);
       doc.setFont('helvetica', 'bold');
-      doc.text(recipe.recipeName, 105, 60, { align: 'center', maxWidth: 180 });
+      doc.text(recipe.name, 105, 60, { align: 'center', maxWidth: 180 });
       
       doc.setFontSize(16);
       doc.setFont('helvetica', 'normal');
-      doc.text(recipe.recipeCategory, 105, 80, { align: 'center' });
+      doc.text(recipe.category, 105, 80, { align: 'center' });
       
       doc.setDrawColor(255, 255, 255);
       doc.setLineWidth(0.5);
       doc.line(60, 85, 150, 85);
       
       // Add image if available
-      if (recipe.recipeImage) {
+      if (recipe.imageUrl) {
         try {
           const img = new Image();
           img.crossOrigin = "Anonymous";
-          img.src = `http://localhost:8080/api/uploads/${recipe.recipeImage}`;
+          img.src = `http://localhost:8080/uploads/${recipe.imageUrl}`;
           
           await new Promise((resolve, reject) => {
             img.onload = resolve;
@@ -357,7 +362,7 @@ function Displayrecipe() {
       doc.setTextColor(40, 40, 40);
       doc.setFontSize(20);
       doc.setFont('helvetica', 'bold');
-      doc.text(recipe.recipeName, 15, 20);
+      doc.text(recipe.name, 15, 20);
       
       doc.setDrawColor(108, 92, 231);
       doc.setLineWidth(0.8);
@@ -366,11 +371,11 @@ function Displayrecipe() {
       // Recipe Metadata Table
       doc.autoTable({
         startY: 30,
-        head: [['Category', 'Servings', 'Price']],
+        head: [['Category', 'Quantity', 'Price']],
         body: [[
-          recipe.recipeCategory, 
-          recipe.recipeQty, 
-          `$${parseFloat(recipe.recipePrice).toFixed(2)}`
+          recipe.category, 
+          recipe.quantity, 
+          `LKR ${parseFloat(recipe.price).toFixed(2)}`
         ]],
         theme: 'grid',
         headStyles: {
@@ -397,7 +402,7 @@ function Displayrecipe() {
       
       doc.setFontSize(12);
       doc.setTextColor(40, 40, 40);
-      const splitDetails = doc.splitTextToSize(recipe.recipeDetails, 180);
+      const splitDetails = doc.splitTextToSize(recipe.description, 180);
       doc.text(splitDetails, 15, 70);
       
       // Ingredients Section
@@ -412,7 +417,7 @@ function Displayrecipe() {
       const ingredientsList = Array.isArray(recipe.ingredients) 
         ? recipe.ingredients 
         : recipe.ingredients 
-          ? recipe.ingredients.split('\n') 
+          ? recipe.ingredients.split('\\n') 
           : ['No ingredients listed'];
       
       ingredientsList.forEach((ingredient, index) => {
@@ -431,7 +436,7 @@ function Displayrecipe() {
       const instructionsList = Array.isArray(recipe.instructions) 
         ? recipe.instructions 
         : recipe.instructions 
-          ? recipe.instructions.split('\n') 
+          ? recipe.instructions.split('\\n') 
           : ['No instructions provided'];
       
       instructionsList.forEach((step, index) => {
@@ -443,42 +448,48 @@ function Displayrecipe() {
       // Footer
       doc.setFontSize(10);
       doc.setTextColor(100);
-      doc.text(`Recipe ID: ${recipe.recipeId}`, 15, 280);
+      doc.text(`Recipe ID: ${recipe.id}`, 15, 280);
       doc.text('Generated on: ' + new Date().toLocaleDateString(), 105, 280, { align: 'center' });
       doc.text('Page 2 of 2', 195, 280, { align: 'right' });
       
       // Save PDF
-      doc.save(`${recipe.recipeName.replace(/[/\\?%*:|"<>]/g, '_')}_Recipe.pdf`);
+      doc.save(`${recipe.name.replace(/[/\\?%*:|\"<>]/g, '_')}_Recipe.pdf`);
     } catch (error) {
       console.error('Error generating PDF:', error);
       alert('Failed to generate PDF. Please try again.');
     }
   };
 
-  // Pagination logic
   const indexOfLastItem = currentPage * itemsPerPage;
   const indexOfFirstItem = indexOfLastItem - itemsPerPage;
   const currentItems = filteredInventory.slice(indexOfFirstItem, indexOfLastItem);
+
   const totalPages = Math.ceil(filteredInventory.length / itemsPerPage);
 
   const paginate = (pageNumber) => setCurrentPage(pageNumber);
 
-  useEffect(() => {
-    loadInventory();
-  }, []);
+  const openModal = (item) => {
+    setSelectedRecipe(item);
+    setShowModal(true);
+  };
+
+  const closeModal = () => {
+    setSelectedRecipe(null);
+    setShowModal(false);
+  };
 
   return (
     <Container>
       <Header>
-        <Title>Gourmet Recipe Manager</Title>
+        <Title>All Recipes</Title>
         <SearchBar>
-          <i className="fas fa-search" style={{ color: '#6c5ce7', marginRight: '8px' }}></i>
           <SearchInput
             type="text"
             placeholder="Search recipes..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
           />
+          {/* Add search icon here if desired */}
         </SearchBar>
       </Header>
 
@@ -487,165 +498,133 @@ function Displayrecipe() {
           <LoadingSpinner />
         </LoadingContainer>
       ) : (
-        <>
-          <TableContainer>
-            <Table>
-              <thead>
-                <tr>
-                  <Th>Image</Th>
-                  <Th>Name</Th>
-                  <Th>Category</Th>
-                  <Th>Qty</Th>
-                  <Th>Price</Th>
-                  <Th style={{ textAlign: 'center' }}>Actions</Th>
-                </tr>
-              </thead>
-              <tbody>
-                {currentItems.map((item, index) => (
-                  <Tr 
-                    key={item.id}
-                    initial={{ opacity: 0, y: 10 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ duration: 0.3, delay: index * 0.05 }}
-                  >
-                    <Td>
-                      {item.recipeImage && (
-                        <ImagePreview
-                          src={`http://localhost:8080/api/uploads/${item.recipeImage}`}
-                          alt={item.recipeName}
-                          onClick={() => {
-                            setSelectedRecipe(item);
-                            setShowModal(true);
-                          }}
-                          whileHover={{ scale: 1.1 }}
-                        />
-                      )}
-                    </Td>
-                    <Td>
-                      <strong>{item.recipeName}</strong>
-                      <div style={{ fontSize: '0.8rem', color: '#666', marginTop: '4px' }}>
-                        ID: {item.recipeId}
-                      </div>
-                    </Td>
-                    <Td>{item.recipeCategory}</Td>
-                    <Td>{item.recipeQty}</Td>
-                    <Td>${item.recipePrice}</Td>
-                    <Td style={{ textAlign: 'center' }}>
-                      <DownloadButton
-                        whileHover={{ scale: 1.05 }}
-                        whileTap={{ scale: 0.95 }}
-                        onClick={() => generatePremiumPDF(item)}
-                      >
-                        <i className="fas fa-file-pdf"></i> PDF
-                      </DownloadButton>
-                      <UpdateButton
-                        whileHover={{ scale: 1.05 }}
-                        whileTap={{ scale: 0.95 }}
-                        onClick={() => window.location.href = `/updaterecipe/${item.id}`}
-                      >
-                        <i className="fas fa-edit"></i> Edit
-                      </UpdateButton>
-                      <DeleteButton
-                        whileHover={{ scale: 1.05 }}
-                        whileTap={{ scale: 0.95 }}
-                        onClick={() => handleDelete(item.id)}
-                        disabled={deletingId === item.id}
-                      >
-                        {deletingId === item.id ? (
-                          <i className="fas fa-spinner fa-spin"></i>
-                        ) : (
-                          <i className="fas fa-trash"></i>
-                        )}{' '}
-                        Delete
-                      </DeleteButton>
-                    </Td>
-                  </Tr>
-                ))}
-              </tbody>
-            </Table>
-          </TableContainer>
-
-          {filteredInventory.length > itemsPerPage && (
-            <Pagination>
-              {Array.from({ length: totalPages }, (_, i) => i + 1).map(number => (
-                <PageButton
-                  key={number}
-                  onClick={() => paginate(number)}
-                  active={currentPage === number}
+        <TableContainer>
+          <Table>
+            <thead>
+              <tr>
+                <Th>Image</Th>
+                <Th>Recipe Name</Th>
+                <Th>Category</Th>
+                <Th>Quantity</Th>
+                <Th>Price (LKR)</Th>
+                <Th style={{ textAlign: 'center' }}>Actions</Th>
+              </tr>
+            </thead>
+            <tbody>
+              {currentItems.map((item) => (
+                <Tr
+                  key={item.id}
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.3 }}
                 >
-                  {number}
-                </PageButton>
+                  <Td>
+                    {item.imageUrl && (
+                      <ImagePreview
+                        src={`http://localhost:8080/uploads/${item.imageUrl}`}
+                        alt={item.name}
+                        onClick={() => openModal(item)}
+                        initial={{ opacity: 0, scale: 0.8 }}
+                        animate={{ opacity: 1, scale: 1 }}
+                        transition={{ duration: 0.3 }}
+                      />
+                    )}
+                  </Td>
+                  <Td>
+                    <strong>{item.name}</strong>
+                    <div style={{ fontSize: '0.8rem', color: '#666', marginTop: '4px' }}>
+                      ID: {item.id}
+                    </div>
+                  </Td>
+                  <Td>{item.category}</Td>
+                  <Td>{item.quantity}</Td>
+                  <Td>{`LKR ${item.price?.toFixed(2)}`}</Td>
+                  <Td style={{ textAlign: 'center' }}>
+                    <UpdateButton
+                      onClick={() => window.location.href = `/updaterecipe/${item.id}`}
+                      whileHover={{ scale: 1.05 }}
+                      whileTap={{ scale: 0.95 }}
+                    >
+                      Update
+                    </UpdateButton>
+                    <DeleteButton
+                      onClick={() => handleDelete(item.id)}
+                      disabled={deletingId === item.id}
+                      whileHover={{ scale: 1.05 }}
+                      whileTap={{ scale: 0.95 }}
+                    >
+                      {deletingId === item.id ? 'Deleting...' : 'Delete'}
+                    </DeleteButton>
+                    <DownloadButton
+                      onClick={() => generatePremiumPDF(item)}
+                      whileHover={{ scale: 1.05 }}
+                      whileTap={{ scale: 0.95 }}
+                    >
+                      Download PDF
+                    </DownloadButton>
+                  </Td>
+                </Tr>
               ))}
-            </Pagination>
-          )}
-        </>
+            </tbody>
+          </Table>
+        </TableContainer>
       )}
+
+      <Pagination>
+        {Array.from({ length: totalPages }, (_, i) => (
+          <PageButton
+            key={i + 1}
+            onClick={() => paginate(i + 1)}
+            active={i + 1 === currentPage}
+          >
+            {i + 1}
+          </PageButton>
+        ))}
+      </Pagination>
 
       {showModal && selectedRecipe && (
         <RecipeDetailsModal
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
-          onClick={() => setShowModal(false)}
+          exit={{ opacity: 0 }}
+          transition={{ duration: 0.3 }}
         >
           <ModalContent
-            initial={{ scale: 0.9 }}
-            animate={{ scale: 1 }}
-            onClick={(e) => e.stopPropagation()}
+            initial={{ y: 50, opacity: 0 }}
+            animate={{ y: 0, opacity: 1 }}
+            exit={{ y: 50, opacity: 0 }}
+            transition={{ duration: 0.3 }}
           >
-            <CloseButton onClick={() => setShowModal(false)}>
-              <i className="fas fa-times"></i>
-            </CloseButton>
+            <CloseButton onClick={closeModal}>X</CloseButton>
             
-            <h2 style={{ color: '#6c5ce7', marginBottom: '1rem' }}>{selectedRecipe.recipeName}</h2>
-            <p style={{ color: '#666', marginBottom: '1.5rem' }}>{selectedRecipe.recipeCategory}</p>
-            
-            {selectedRecipe.recipeImage && (
+            {selectedRecipe.imageUrl && (
               <ModalImage
-                src={`http://localhost:8080/api/uploads/${selectedRecipe.recipeImage}`}
-                alt={selectedRecipe.recipeName}
+                src={`http://localhost:8080/uploads/${selectedRecipe.imageUrl}`}
+                alt={selectedRecipe.name}
               />
             )}
             
+            <h2 style={{ color: '#6c5ce7', marginBottom: '1rem' }}>{selectedRecipe.name}</h2>
+            <p style={{ color: '#666', marginBottom: '1.5rem' }}><strong>Category:</strong> {selectedRecipe.category}</p>
+            
             <div style={{ marginBottom: '1.5rem' }}>
               <h3 style={{ color: '#6c5ce7', marginBottom: '0.5rem' }}>Details</h3>
-              <p style={{ whiteSpace: 'pre-line' }}>{selectedRecipe.recipeDetails}</p>
+              <p style={{ whiteSpace: 'pre-line' }}>{selectedRecipe.description}</p>
             </div>
             
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '1rem', marginBottom: '1.5rem' }}>
               <div style={{ background: '#f8f9fa', padding: '1rem', borderRadius: '8px' }}>
                 <h4 style={{ color: '#6c5ce7', marginBottom: '0.5rem' }}>Quantity</h4>
-                <p>{selectedRecipe.recipeQty}</p>
+                <p>{selectedRecipe.quantity}</p>
               </div>
               <div style={{ background: '#f8f9fa', padding: '1rem', borderRadius: '8px' }}>
                 <h4 style={{ color: '#6c5ce7', marginBottom: '0.5rem' }}>Price</h4>
-                <p>${selectedRecipe.recipePrice}</p>
+                <p>LKR {selectedRecipe.price?.toFixed(2)}</p>
               </div>
               <div style={{ background: '#f8f9fa', padding: '1rem', borderRadius: '8px' }}>
                 <h4 style={{ color: '#6c5ce7', marginBottom: '0.5rem' }}>Recipe ID</h4>
-                <p>{selectedRecipe.recipeId}</p>
+                <p>{selectedRecipe.id}</p>
               </div>
-            </div>
-            
-            <div style={{ display: 'flex', gap: '1rem', justifyContent: 'center' }}>
-              <DownloadButton
-                whileHover={{ scale: 1.05 }}
-                whileTap={{ scale: 0.95 }}
-                onClick={() => {
-                  generatePremiumPDF(selectedRecipe);
-                  setShowModal(false);
-                }}
-                style={{ padding: '10px 20px' }}
-              >
-                <i className="fas fa-file-pdf"></i> Download PDF
-              </DownloadButton>
-              <UpdateButton
-                whileHover={{ scale: 1.05 }}
-                whileTap={{ scale: 0.95 }}
-                onClick={() => window.location.href = `/updaterecipe/${selectedRecipe.id}`}
-                style={{ padding: '10px 20px' }}
-              >
-                <i className="fas fa-edit"></i> Edit Recipe
-              </UpdateButton>
             </div>
           </ModalContent>
         </RecipeDetailsModal>
